@@ -1,20 +1,15 @@
-package se.sogeti.app.scrapers;
+package se.sogeti.app.tasks;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
-import java.net.URI;
 import java.net.URL;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import javax.imageio.ImageIO;
 
@@ -26,28 +21,37 @@ import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import se.sogeti.app.config.Constants;
+import se.sogeti.app.config.Settings;
 import se.sogeti.app.database.Database;
-import se.sogeti.app.drivers.HttpClientSingleton;
 import se.sogeti.app.models.ItemDetails;
 import se.sogeti.app.models.dto.AdvertDTO;
 import se.sogeti.app.models.dto.SellerDTO;
 
-public class AdScraper implements Runnable, BaseScraper {
+public class AdScraper extends BaseTask {
 
   public static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass().getName());
 
-  private volatile boolean isRunning = true;
   private Database<AdvertDTO> advertDatabase = new Database<>();
   private Database<SellerDTO> sellerDatabase = new Database<>();
 
-  private final HttpClient client = HttpClientSingleton.getInstance();
+  private final Settings settings = Settings.getInstance();
+
+  public AdScraper(long n, String id) {
+    super(n, id);
+  }
 
   @Override
   public void run() {
-    long elapsedTime = System.currentTimeMillis();
+    Date d = new Date();
+    DateFormat df = new SimpleDateFormat("HH:mm:ss:SSS");
+
+    long startTime = System.currentTimeMillis();
+    d.setTime(startTime);
+    LOGGER.info("Starting task {} at {}", super.id, df.format(d));
+
     try {
-      while (isRunning) {
+      while (Boolean
+          .parseBoolean(advertDatabase.callGet(settings.getApiURL().concat("/api/status/isActive?value=as")))) {
         LOGGER.info("Fetching open link...");
         Object[] data = getData(advertDatabase.fetchOpenLink().getHref());
 
@@ -55,29 +59,29 @@ public class AdScraper implements Runnable, BaseScraper {
         AdvertDTO advert = (AdvertDTO) data[1];
 
         LOGGER.info("Sending SellerDTO...");
-        sellerDatabase.postSingle(seller,
-            "http://".concat(Constants.databaseIp).concat(":").concat(Constants.databasePort).concat("/api/sellers"));
+        sellerDatabase.postSingle(seller, settings.getApiURL().concat("/api/sellers"));
 
         LOGGER.info("Sending AdvertDTO...");
-        advertDatabase.postSingle(advert,
-            "http://".concat(Constants.databaseIp).concat(":").concat(Constants.databasePort).concat("/api/adverts"));
+        advertDatabase.postSingle(advert, settings.getApiURL().concat("/api/adverts"));
 
         randomizedSleep(1.5, 2.5);
       }
     } catch (Exception e) {
       LOGGER.error(e.getMessage());
-      kill();
     } finally {
-      LOGGER.info("Elapsed time: {}s", (System.currentTimeMillis() - elapsedTime) / 1000);
+      long endTime = System.currentTimeMillis();
+      d.setTime(endTime);
+      LOGGER.info("Ending task {} at {} after {} s", super.id, df.format(d), (endTime - startTime) / 1000);
     }
   }
 
   private Object[] getData(String url) {
     Gson gson = new Gson();
-    String jsonURL = Constants.BASE_URL.concat("/item/").concat(url.split("/")[5]).concat(".json");
-    LOGGER.info("getData().jsonURL == {}", jsonURL);
+    String jsonURL = settings.getBaseUrl().concat("/item/").concat(url.split("/")[5]).concat(".json");
+    LOGGER.info("Scraping data from URL, {}", jsonURL);
 
-    JsonObject json = JsonParser.parseString(callGet(jsonURL)).getAsJsonObject().get("itemDetails").getAsJsonObject();
+    JsonObject json = JsonParser.parseString(advertDatabase.callGet(jsonURL)).getAsJsonObject().get("itemDetails")
+        .getAsJsonObject();
 
     ItemDetails itemDetails = gson.fromJson(String.valueOf(json), ItemDetails.class);
 
@@ -113,30 +117,6 @@ public class AdScraper implements Runnable, BaseScraper {
     return new byte[0];
   }
 
-  public String callGet(String href) {
-    HttpRequest request = HttpRequest.newBuilder().GET().uri(URI.create(href))
-        .setHeader("User-Agent", Constants.EXTERNAL_USER_AGENT).build();
-
-    CompletableFuture<HttpResponse<String>> response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
-
-    response.join();
-
-    String bodyJson = "";
-
-    try {
-      bodyJson = response.thenApply(HttpResponse::body).get(10, TimeUnit.SECONDS);
-    } catch (InterruptedException ie) {
-      LOGGER.error("callGet.InterruptedException == {}", ie.getMessage());
-      Thread.currentThread().interrupt();
-    } catch (ExecutionException ee) {
-      LOGGER.error("callGet.ExecutionException == {}", ee.getMessage());
-    } catch (TimeoutException te) {
-      LOGGER.error("callGet.TimeoutException == {}", te.getMessage());
-    }
-
-    return bodyJson;
-  }
-
   /**
    * Function that randomizes a number between given parameters and uses that to
    * sleep the current Thread. Remember that the parameters are in seconds and not
@@ -159,8 +139,4 @@ public class AdScraper implements Runnable, BaseScraper {
     }
   }
 
-  @Override
-  public void kill() {
-    isRunning = false;
-  }
 }
