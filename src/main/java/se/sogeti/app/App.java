@@ -1,53 +1,96 @@
 package se.sogeti.app;
 
 import java.lang.invoke.MethodHandles;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import se.sogeti.app.config.Constants;
-import se.sogeti.app.scrapers.AdScraper;
-import se.sogeti.app.scrapers.BaseScraper;
+import se.sogeti.app.config.Settings;
+import se.sogeti.app.database.Database;
+import se.sogeti.app.models.dto.AdvertDTO;
+import se.sogeti.app.tasks.AdScraper;
+import se.sogeti.app.tasks.BaseTask;
+import se.sogeti.app.tasks.ThreadExecutor;
 
 public class App {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass().getName());
-	private static Set<BaseScraper> scrapers = new HashSet<>();
-	private static Set<Thread> threads = new HashSet<>();
+	private static final ThreadExecutor tpe = new ThreadExecutor(1, 2, 60000L, TimeUnit.MILLISECONDS,
+			new LinkedBlockingQueue<>());
+	private static final Map<String, BaseTask> tasks = new HashMap<>();
+	private static Settings settings;
+	private static boolean killAll = false;
+	private static final Database<AdvertDTO> DATABASE = new Database<>();
 
 	public static void main(String[] args) {
-		Constants.init();
+		settings = Settings.getInstance();
+		settings.updateSettings();
 		app();
 	}
 
 	private static void app() {
 		try {
-			//
+			// Adds the Advert scraper as a task for ThreadExecutor to run. The Integer
+			// argument is not in use yet, the 10 does nothing as of yet.
+			addTask("ScrapeTask", new AdScraper(10, "ScrapeTask"));
+
+			commenceTasking();
 		} catch (Exception e) {
 			LOGGER.error("app.Exception == {}", e.getMessage());
 		}
 	}
 
-	private static void adscraperRun() {
-		try {
-			AdScraper ad = new AdScraper();
-			Thread t1 = new Thread(ad, "WS-T-AS");
+	/**
+	 * Will start the whole process, essentially the scraper. Checks with API if it
+	 * should be active, if the ScrapeTask exists and if ScrapeTask is already
+	 * running or not. If advisable conditions then it will execute the ScrapeTask,
+	 * otherwise it does nothing.
+	 * 
+	 * It will "sleep" for X seconds beginning of every iteration.
+	 */
+	private static void commenceTasking() {
+		while (!killAll) {
+			try {
+				// How long it should wait until asking API if it should execute its task(s)
+				sleep(5);
 
-			scrapers.addAll(Arrays.asList(ad));
-			threads.addAll(Arrays.asList(t1));
+				boolean b = Boolean
+						.parseBoolean(DATABASE.callGet(settings.getApiURL().concat("/api/status/isActive?value=as")));
 
-			t1.start(); // Starts thread 1
-			sleep(30);
-			ad.kill(); // Send kill order to the Adscraper (Which is being run by the
-			// Thread named
-			// "t1")
-		} catch (Exception e) {
-			LOGGER.error("adScraperTest.Exception == {}", e.getMessage());
-			kill();
+				if (b && tasks.containsKey("ScrapeTask") && !ThreadExecutor.contains("ScrapeTask")) {
+					// LOGGER.info(
+					// "Advisable conditions! {\n\tisActive == {}\n\tTask exists == {}\n\tTask
+					// isRunning == {}\n}\n",
+					// b, tasks.containsKey("ScrapeTask"), ThreadExecutor.contains("ScrapeTask"));
+					executeTask("ScrapeTask");
+
+				} else {
+					// LOGGER.info(
+					// "Inadvisable conditions! {\n\tisActive == {}\n\tTask exists == {}\n\tTask
+					// isRunning == {}\n}\n",
+					// b, tasks.containsKey("ScrapeTask"), ThreadExecutor.contains("ScrapeTask"));
+				}
+
+			} catch (Exception e) {
+				LOGGER.error("commenceTask().Exception == {}", e.getMessage());
+			}
 		}
+	}
+
+	private static void addTask(String s, BaseTask e) {
+		tasks.put(s, e);
+	}
+
+	private static void executeTask(String s) {
+		tpe.execute(tasks.get(s));
+	}
+
+	private static Boolean isTaskQueued(String s) {
+		return tpe.getQueue().contains(tasks.get(s));
 	}
 
 	private static void sleep(long seconds) {
@@ -58,16 +101,4 @@ public class App {
 			Thread.currentThread().interrupt();
 		}
 	}
-
-	private static void kill() {
-		try {
-			if (!scrapers.isEmpty()) {
-				scrapers.forEach(s -> s.kill());
-				scrapers.clear();
-			}
-		} catch (Exception e) {
-			LOGGER.info("kill().Exception == {}", e.getMessage());
-		}
-	}
-
 }
