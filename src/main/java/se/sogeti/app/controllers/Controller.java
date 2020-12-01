@@ -17,7 +17,7 @@ import com.google.gson.GsonBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import se.sogeti.app.config.Constants;
+import se.sogeti.app.config.Settings;
 import se.sogeti.app.drivers.HttpClientSingleton;
 import se.sogeti.app.models.dto.LinkDTO;
 
@@ -27,14 +27,14 @@ public class Controller<T> {
     private final Gson gson;
 
     private final HttpClient client = HttpClientSingleton.getInstance();
+    private final Settings settings = Settings.getInstance();
 
     public Controller() {
         this.gson = new GsonBuilder().setLenient().create();
     }
 
     public LinkDTO getOpenLink() {
-        return gson.fromJson(callGet("http://".concat(Constants.databaseIp).concat(":").concat(Constants.databasePort)
-                .concat("/api/links/open")), LinkDTO.class);
+        return gson.fromJson(callGet(settings.getApiURL().concat("/api/links/open")), LinkDTO.class);
     }
 
     @SuppressWarnings("unchecked")
@@ -45,7 +45,7 @@ public class Controller<T> {
             String bodyJson = gson.toJson(object);
 
             HttpRequest request = HttpRequest.newBuilder().POST(BodyPublishers.ofString(bodyJson)).uri(URI.create(uri))
-                    .header("Content-Type", "application/json").header("User-Agent", Constants.INTERNAL_USER_AGENT)
+                    .header("Content-Type", "application/json").header("User-Agent", settings.getInternalUserAgent())
                     .build();
 
             CompletableFuture<HttpResponse<String>> response = client.sendAsync(request,
@@ -69,17 +69,17 @@ public class Controller<T> {
 
     public String callGet(String href) {
         HttpRequest request = HttpRequest.newBuilder().GET().uri(URI.create(href))
-                .setHeader("User-Agent", Constants.EXTERNAL_USER_AGENT).build();
+                .setHeader("User-Agent", settings.getExternalUserAgent()).build();
 
         CompletableFuture<HttpResponse<String>> response = client.sendAsync(request,
                 HttpResponse.BodyHandlers.ofString());
 
         response.join();
 
-        String bodyJson = "";
+        String rtnBody = "";
 
         try {
-            bodyJson = response.thenApply(HttpResponse::body).get(10, TimeUnit.SECONDS);
+            rtnBody = response.thenApply(HttpResponse::body).get(10, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             LOGGER.error("callGet.InterruptedException == {}", ie.getMessage());
             Thread.currentThread().interrupt();
@@ -89,7 +89,7 @@ public class Controller<T> {
             LOGGER.error("callGet.TimeoutException == {}", te.getMessage());
         }
 
-        return bodyJson;
+        return rtnBody;
     }
 
 }
