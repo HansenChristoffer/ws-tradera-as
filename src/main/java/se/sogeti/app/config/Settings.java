@@ -34,7 +34,7 @@ public class Settings {
 
     // DEFAULTS
     private static final String DEFAULT_BASE_URL = "https://www.tradera.com";
-    private static final String DEFAULT_API_URL = "http://192.168.0.145:8080";
+    private static final String DEFAULT_API_URL = "https://webscraperapi-1606300858222.azurewebsites.net";
     private static final String DEFAULT_CONFIG_PATH = "./config/";
     private static final String DEFAULT_INTERNAL_USER_AGENT = "Scraper HttpClient JDK11+";
     private static final String DEFAULT_EXTERNAL_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36";
@@ -121,7 +121,6 @@ public class Settings {
 
             FileOutputStream fos = new FileOutputStream(new File(SETTINGS_FILE_PATH));
             prop.storeToXML(fos, "Modified");
-
             fos.close();
 
             LOGGER.info("Initilization complete!");
@@ -230,15 +229,14 @@ public class Settings {
 
     private void createDefaultSettingsFile() {
         Properties prop = getSortedPropertiesInstance();
+        File f = new File(SETTINGS_FILE_PATH);
 
-        FileOutputStream fos;
-        try {
-            File f = new File(SETTINGS_FILE_PATH);
-            f.setWritable(true);
-            f.setReadable(true);
+        f.setWritable(true);
+        f.setReadable(true);
+
+        try (FileOutputStream fos = new FileOutputStream(f)) {
             f.createNewFile();
 
-            fos = new FileOutputStream(f);
             dateTimeNow = ZonedDateTime.now(ZoneId.of(DEFAULT_TIME_ZONE_ID));
 
             prop.setProperty("base_url", DEFAULT_BASE_URL);
@@ -252,7 +250,6 @@ public class Settings {
             prop.setProperty("lastLoaded", dateTimeNow.toString());
 
             prop.storeToXML(fos, "Modified");
-            fos.close();
         } catch (InvalidPropertiesFormatException e) {
             LOGGER.error("Error occured loading the properties file", e);
         } catch (FileNotFoundException e) {
