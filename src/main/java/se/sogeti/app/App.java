@@ -19,7 +19,7 @@ import se.sogeti.app.tasks.ThreadExecutor;
 public class App {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass().getName());
-	private static final ThreadExecutor tpe = new ThreadExecutor(1, 2, 60000L, TimeUnit.MILLISECONDS,
+	private static final ThreadExecutor tpe = new ThreadExecutor(1, 1, 60000L, TimeUnit.MILLISECONDS,
 			new LinkedBlockingQueue<>());
 	private static final Map<String, BaseTask> tasks = new HashMap<>();
 	private static Settings settings;
@@ -56,7 +56,7 @@ public class App {
 		while (!killAll) {
 			try {
 				// How long it should wait until asking API if it should execute its task(s)
-				sleep(5);
+				sleep(30);
 
 				boolean b = Boolean
 						.parseBoolean(DATABASE.callGet(settings.getApiURL().concat("/api/status/isActive?value=as")));
