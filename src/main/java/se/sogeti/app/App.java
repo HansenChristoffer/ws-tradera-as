@@ -67,7 +67,6 @@ public class App {
 					// isRunning == {}\n}\n",
 					// b, tasks.containsKey("ScrapeTask"), ThreadExecutor.contains("ScrapeTask"));
 					executeTask("ScrapeTask");
-
 				} else {
 					// LOGGER.info(
 					// "Inadvisable conditions! {\n\tisActive == {}\n\tTask exists == {}\n\tTask
