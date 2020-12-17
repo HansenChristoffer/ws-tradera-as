@@ -42,6 +42,8 @@ public class AdScraper extends BaseTask {
 
   @Override
   public void run() {
+    settings.updateSettings();
+
     Date d = new Date();
     DateFormat df = new SimpleDateFormat("HH:mm:ss:SSS");
 
